@@ -1,7 +1,8 @@
 /*************************************************************************************************
  * Portable scanner based on CC2500 single chip or related CC2500 module
  * Written by Valeriy Yatsenkov (aka Rover) http://www.fankraft.ru
- * Ver.1.2 March,14,2015
+ * Rewrited and enhanced by Alexey Rusov
+ * Based on oriiginal Ver.1.2 March,14,2015
  * You may freely copy and redistribute this software if no fee is charged for use,
  * copying or distribution.  Such redistributions must retain the above copyright
  * notice.
