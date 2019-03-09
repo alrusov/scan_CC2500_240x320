@@ -39,7 +39,6 @@
 #include "cc2500_REG.h"       // CC2500 registers description
 
 //#define DEBUG
-#include <Arduino.h>
 
 // https://github.com/alrusov/arduino._mylibs
 #include "_mylibs.h"
