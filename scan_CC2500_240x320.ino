@@ -39,6 +39,9 @@
 #include "cc2500_REG.h"       // CC2500 registers description
 
 //#define DEBUG
+#include <Arduino.h>
+
+// https://github.com/alrusov/arduino._mylibs
 #include "_mylibs.h"
 
 #define TFT_RST    7      // display Reset (0 if use Arduino reset)
