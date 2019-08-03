@@ -1,34 +1,34 @@
 /*************************************************************************************************
- * Portable scanner based on CC2500 single chip or related CC2500 module
- * Written by Valeriy Yatsenkov (aka Rover) http://www.fankraft.ru
- * Rewrited and enhanced by Alexey Rusov
- * Based on oriiginal Ver.1.2 March,14,2015
- * You may freely copy and redistribute this software if no fee is charged for use,
- * copying or distribution.  Such redistributions must retain the above copyright
- * notice.
+   Portable scanner based on CC2500 single chip or related CC2500 module
+   Written by Valeriy Yatsenkov (aka Rover) http://www.fankraft.ru
+   Rewrited and enhanced by Alexey Rusov
+   Based on oriiginal Ver.1.2 March,14,2015
+   You may freely copy and redistribute this software if no fee is charged for use,
+   copying or distribution.  Such redistributions must retain the above copyright
+   notice.
  **************************************************************************************************
- * Precautions:
- * - Do appropriate current and voltage conversion between your microcontroller and CC2500 module.
- * - High voltage or High current may damage your CC2500 Module or Display Module!
+   Precautions:
+   - Do appropriate current and voltage conversion between your microcontroller and CC2500 module.
+   - High voltage or High current may damage your CC2500 Module or Display Module!
  **************************************************************************************************
- * scanner for
- * base frequency 2400.009949 MHz (channel 0)
- * end frequency  2483.128540 MHz (channel 205)
- * channel spacing 405.456543 kHz
+   scanner for
+   base frequency 2400.009949 MHz (channel 0)
+   end frequency  2483.128540 MHz (channel 205)
+   channel spacing 405.456543 kHz
  **************************************************************************************************
- * Graphics implementation based on Adafruit_GFX core library
- * https://github.com/adafruit/Adafruit-GFX-Library/archive/master.zip
- *
- * carefully check what display chip used on your display module!!!
- * library for ILI9341 is Adafruit_ILI9341
- * https://github.com/adafruit/Adafruit_ILI9341/archive/master.zip
- * library for ILI9341 is Adafruit_ILI9341
- * https://github.com/adafruit/Adafruit-ILI9341-Library/archive/master.zip
- * library for Samsung S6D02A1 is Adafruit_QDTech
- * https://github.com/zigwart/Adafruit_QDTech
- *
- * Thanks Adafruit for free libraries. You can purchase display modules at http://www.adafruit.com
- */
+   Graphics implementation based on Adafruit_GFX core library
+   https://github.com/adafruit/Adafruit-GFX-Library/archive/master.zip
+
+   carefully check what display chip used on your display module!!!
+   library for ILI9341 is Adafruit_ILI9341
+   https://github.com/adafruit/Adafruit_ILI9341/archive/master.zip
+   library for ILI9341 is Adafruit_ILI9341
+   https://github.com/adafruit/Adafruit-ILI9341-Library/archive/master.zip
+   library for Samsung S6D02A1 is Adafruit_QDTech
+   https://github.com/zigwart/Adafruit_QDTech
+
+   Thanks Adafruit for free libraries. You can purchase display modules at http://www.adafruit.com
+*/
 
 //-----------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -37,6 +37,7 @@
 #include <Adafruit_ILI9341.h> // Hardware-specific library for ILI9341 display chip
 #include <SPI.h>
 #include "cc2500_REG.h"       // CC2500 registers description
+#include <SD.h>
 
 //#define DEBUG
 
@@ -48,6 +49,7 @@
 #define TFT_CS     9      // display Select
 
 #define SCAN_CS   10      // scanner Select
+#define SD_CS      6     // SD Select
 
 #define CHAN_COUNT      206 // max number of channel for spacing 405.456543MHz
 #define SAMPLES_COUNT   100 // qty of samples in each iteration (1...100) to found a max RSSI value
@@ -84,10 +86,13 @@ byte  Caliber[CHAN_COUNT];
 int   MarkerAbs = -1;
 int   MarkerPos = -1;
 
+File  dataFile;
+bool  dataFileOpened = false;
+
 //-----------------------------------------------------------------------------------------------------------------------------------------//
 
 void CC2500_Ready() {
-  while(digitalRead(MISO) == HIGH);
+  while (digitalRead(MISO) == HIGH);
 }
 
 
@@ -98,7 +103,7 @@ byte CC2500_Read(byte addr) {
   SPI.transfer(addr);
   byte value = SPI.transfer(0);
   digitalWrite(SCAN_CS, HIGH);
-  
+
   return value;
 }
 
@@ -106,7 +111,7 @@ byte CC2500_Read(byte addr) {
 void CC2500_Write(byte addr, byte value) {
   digitalWrite(SCAN_CS, LOW);
   CC2500_Ready();
-  
+
   SPI.transfer(addr);
   SPI.transfer(value);
   digitalWrite(SCAN_CS, HIGH);
@@ -144,7 +149,7 @@ void setup(void) {
 
   pinMode(TFT_CS, OUTPUT);
   pinMode(SCAN_CS, OUTPUT);
-//  pinMode(SS, OUTPUT);
+  //  pinMode(SS, OUTPUT);
 
   digitalWrite(TFT_CS, HIGH);
   digitalWrite(SCAN_CS, HIGH);
@@ -154,11 +159,45 @@ void setup(void) {
 
   tft.begin();
   tft.setRotation(TFT_ROTATION);
-  tft.fillScreen(TFT_BLACK);  // clear display to black
-
-  tft.setCursor(0, 5);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(TEXT_SIZE);
+
+  // SD card initialization
+
+  tft.fillScreen(TFT_BLACK);  // clear display to black
+  tft.setCursor(0, 5);
+  tft.print("Open log file - ");
+
+  if (!SD.begin(SD_CS)) {
+    tft.print("ERR1");
+    debugPrintf("Card failed, or not present\n");
+  } else {
+    dataFile = SD.open("scan.csv", FILE_WRITE);
+    if (!dataFile) {
+      tft.print("ERR2");
+      debugPrintf("Open file error\n");
+    } else {
+      tft.print("OK");
+      dataFileOpened = true;
+      dataFile.print("\nms");
+
+      char tmpS[16];
+      for (int i = 0; i < CHAN_COUNT; i++) {
+        dataFile.print(",");
+        dataFile.print(itoa(i, tmpS, 10));
+      }
+      dataFile.print("\n");
+      dataFile.flush();
+    }
+  }
+  for (int i = 0; i < 20; i++) {
+    delayMicroseconds(50000);
+  }
+
+  // receiver calibration
+
+  tft.fillScreen(TFT_BLACK);  // clear display to black
+  tft.setCursor(0, 5);
   tft.print("Calibration...");
 
   CC2500_init();  // initialize CC2500 registers
@@ -190,14 +229,14 @@ void setup(void) {
 void DrawMarker() {
   int oldPos = MarkerPos;
   int newAbs = analogRead(A7);
-  
+
   if ((MarkerPos < 0) || (abs(MarkerAbs - newAbs) > 4)) {
     MarkerAbs = newAbs;
     MarkerPos = (int)(newAbs / 5. + 0.5);
   }
 
   if (MarkerPos != oldPos) {
-    tft.fillRect(INFO_X, INFO_Y, FRAME_X + FRAME_W - INFO_X - 2, TEXT_SIZE*8, TFT_BLACK);
+    tft.fillRect(INFO_X, INFO_Y, FRAME_X + FRAME_W - INFO_X - 2, TEXT_SIZE * 8, TFT_BLACK);
     tft.setCursor(INFO_X, INFO_Y);
 
     double chan = 0.405456543 * MarkerPos + 2400.009949;
@@ -209,7 +248,7 @@ void DrawMarker() {
     sprintf(s, "%03d", MarkerPos);
     tft.print(s);
 
-    if(oldPos >= 0) {
+    if (oldPos >= 0) {
       tft.drawFastVLine(FRAME_X + 1 + oldPos, GRAPH_Y, GRAPH_H, TFT_BLACK);
     }
     tft.drawFastVLine(FRAME_X + 1 + MarkerPos, GRAPH_Y, GRAPH_H, TFT_RED);
@@ -218,6 +257,12 @@ void DrawMarker() {
 
 
 void loop() {
+  char tmpS[16];
+
+  if (dataFileOpened) {
+    dataFile.print(ltoa(millis(), tmpS, 10));
+  }
+
   for (int i = 0; i < CHAN_COUNT; i++) {
     CC2500_Write(CHANNR, i);            // set channel
     CC2500_Write(FSCAL1, Caliber[i]);   // restore calibration value for this channel
@@ -229,21 +274,26 @@ void loop() {
       byte data = CC2500_Read(REG_RSSI);
 
       // convert RSSI data from 2's complement to signed decimal
-      int dbm = data >= 128?
-                 (data - 256) / 2 - 70:
-                 data / 2 - 70;
+      int dbm = data >= 128 ?
+                (data - 256) / 2 - 70 :
+                data / 2 - 70;
       if (dbm > maxDbm) {
         maxDbm = dbm; // keep maximum
       }
     }
 
-//#define RSSI_OFFSET     95  // offset for displayed data
+    //#define RSSI_OFFSET     95  // offset for displayed data
     maxDbm += 95;
-    
-    if(maxDbm > MAX_VAL) {
+
+    if (maxDbm > MAX_VAL) {
       maxDbm = MAX_VAL;
     } else if (maxDbm < 0) {
       maxDbm = 1;
+    }
+
+    if (dataFileOpened) {
+      dataFile.print(",");
+      dataFile.print(itoa(maxDbm, tmpS, 10));
     }
 
     if (i != MarkerPos) { // if channel position not equal to marker position
@@ -251,7 +301,12 @@ void loop() {
       tft.drawFastVLine(FRAME_X + 1 + i, FRAME_Y + FRAME_H - 1 - maxDbm, maxDbm      , TFT_GREEN);
     }
   }
-  
+
+  if (dataFileOpened) {
+    dataFile.print("\n");
+    dataFile.flush();
+  }
+
   DrawMarker();
 }
 
