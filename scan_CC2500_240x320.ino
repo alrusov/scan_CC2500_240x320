@@ -228,7 +228,7 @@ void setup(void) {
 
 void DrawMarker() {
   int oldPos = MarkerPos;
-  int newAbs = analogRead(A7);
+  int newAbs = analogRead(A3);
 
   if ((MarkerPos < 0) || (abs(MarkerAbs - newAbs) > 4)) {
     MarkerAbs = newAbs;
